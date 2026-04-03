@@ -13,12 +13,8 @@ import java.util.UUID;
 @Repository
 public interface TransactionRepository extends JpaRepository<Transaction, UUID> {
 
-    @Query("SELECT " +
-            "SUM(CASE WHEN t.receiver = ?1 THEN t.creditAmount ELSE 0 END) - " +
-            "SUM(CASE WHEN t.sender = ?1 THEN t.debitAmount ELSE 0 END) " +
-            "FROM Transaction t " +
-            "WHERE t.sender = ?1 OR t.receiver = ?1")
-    BigDecimal getBalance( UUID userId);
+    @Query("SELECT SUM(l.amount) FROM LedgerEntry l WHERE l.accountId = :accountId")
+     BigDecimal getBalance( UUID accountId);
 
     @Query("SELECT COUNT(a)>0 FROM Account a WHERE a.accountId = ?1")
     boolean userExists(UUID accountId);

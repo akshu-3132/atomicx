@@ -31,7 +31,7 @@ public class AccountService {
         Account account = accountMapper.toEntity(accountRequestDto);
         account.setAccountId( idGen.generate());
         accountRepository.save(account);
-        transactionService.internalDeposit(account.getAccountId());
+        transactionService.internalTransfer(account.getAccountId());
         return new AccountResponseDto()
                 .setAccountId(account.getAccountId())
                 .setUserName(account.getUserName())

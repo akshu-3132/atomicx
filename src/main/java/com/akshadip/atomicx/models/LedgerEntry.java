@@ -1,9 +1,8 @@
 package com.akshadip.atomicx.models;
 
+
 import jakarta.persistence.*;
-import lombok.AllArgsConstructor;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+import lombok.*;
 import lombok.experimental.Accessors;
 import org.hibernate.annotations.CreationTimestamp;
 
@@ -12,27 +11,30 @@ import java.time.Instant;
 import java.util.UUID;
 
 @Entity
-@Data
+@Getter
+@Setter
+@Accessors(chain = true)
 @AllArgsConstructor
 @NoArgsConstructor
-@Accessors(chain = true)
-public class Transaction {
+public class LedgerEntry {
     @Id
-    private UUID transactionId;
+    private UUID id;
 
-    @Column(nullable = false, updatable = false)
-    private UUID sender;
-
-    @Column(nullable = false, updatable = false)
-    private UUID receiver;
+    @Column(nullable = false)
+    private UUID accountId;
 
     @Column(nullable = false, updatable = false, precision = 19, scale = 4)
     private BigDecimal amount;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "transaction_id",nullable = false)
+    private Transaction transaction;
+
     @Enumerated(EnumType.STRING)
-    private TransactionStatus status;
+    private TransactionType transactionType;
 
     @CreationTimestamp
     @Column(nullable = false,updatable = false)
     private Instant createdAt;
+
 }
