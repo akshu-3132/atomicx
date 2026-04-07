@@ -9,10 +9,13 @@ import com.akshadip.atomicx.models.TransactionType;
 import com.akshadip.atomicx.repositories.LedgerEntryRepository;
 import com.akshadip.atomicx.repositories.TransactionRepository;
 import com.fasterxml.uuid.impl.TimeBasedEpochGenerator;
-import jakarta.transaction.Transactional;
+import jakarta.persistence.Timeout;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.util.List;
+import java.util.UUID;
 
 @Service
 public class LedgerService {
@@ -20,18 +23,15 @@ public class LedgerService {
     private final TransactionMapper transactionMapper;
     private final TimeBasedEpochGenerator idGen;
     private final LedgerEntryRepository ledgerEntryRepository;
-    private final TransactionRepository transactionRepository;
     LedgerService(TransactionMapper transactionMapper,TimeBasedEpochGenerator idGen,LedgerEntryRepository ledgerEntryRepository,
                   TransactionRepository transactionRepository){
         this.transactionMapper = transactionMapper;
         this.idGen = idGen;
         this.ledgerEntryRepository = ledgerEntryRepository;
-        this.transactionRepository = transactionRepository;
     }
 
-    @Transactional
+    @Transactional(timeout = 7)
     public TransactionResponseDto executeTransaction(Transaction transaction){
-        transactionRepository.save(transaction);
         LedgerEntry ledgerEntryCredit = new LedgerEntry()
                 .setId(idGen.generate())
                 .setAccountId(transaction.getReceiver())

@@ -12,10 +12,6 @@ import java.util.UUID;
 
 @Repository
 public interface TransactionRepository extends JpaRepository<Transaction, UUID> {
-
-    @Query("SELECT SUM(l.amount) FROM LedgerEntry l WHERE l.accountId = :accountId")
-     BigDecimal getBalance( UUID accountId);
-
     @Query("SELECT COUNT(a)>0 FROM Account a WHERE a.accountId = ?1")
     boolean userExists(UUID accountId);
 }

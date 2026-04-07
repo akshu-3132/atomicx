@@ -32,16 +32,15 @@ public class TransactionMapper {
 
 
     public Transaction toEntity(TransactionRequestDto transactionRequestDto) {
-        Optional<UUID> senderId = accountRepository.getAccountId(transactionRequestDto.getSenderUserName());
-        UUID sender = senderId.orElseThrow(() -> new UserDoesnotExist("No sender exist with this UserName"));
-        Optional<UUID> receiverId = accountRepository.getAccountId(transactionRequestDto.getReceiverUserName());
-        UUID receiver = receiverId.orElseThrow(() -> new UserDoesnotExist("No reciever Exist with this userName"));
+        UUID sender = accountRepository.getAccountId(transactionRequestDto.getSenderUserName())
+                .orElseThrow(()-> new UserDoesnotExist("Sender Doesn't exist"));
+        UUID receiver = accountRepository.getAccountId(transactionRequestDto.getReceiverUserName())
+                .orElseThrow(()-> new UserDoesnotExist("Receiver Doesn't exist"));
         return new Transaction()
                 .setSender(sender)
                 .setReceiver(receiver)
                 .setTransactionId(idGen.generate())
-                .setAmount(transactionRequestDto.getAmount())
-                .setStatus(TransactionStatus.COMPLETED);
+                .setAmount(transactionRequestDto.getAmount());
     }
 
     public TransactionResponseDto toResponse(Transaction transaction) {
@@ -58,8 +57,8 @@ public class TransactionMapper {
         return new TransactionResponseDto()
                 .setSenderUserName(senderUserName)
                 .setReceiverUserName(receiverUserName)
-                .setStatus(transaction.getStatus())
-                .setAmount(transaction.getAmount());
+                .setAmount(transaction.getAmount())
+                .setStatus(transaction.getStatus());
     }
 }
 
