@@ -1,15 +1,20 @@
 package com.akshadip.atomicx.models;
 
-import jakarta.persistence.*;
+import java.math.BigDecimal;
+import java.time.Instant;
+import java.util.UUID;
+
+import org.hibernate.annotations.CreationTimestamp;
+
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.Id;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.experimental.Accessors;
-import org.hibernate.annotations.CreationTimestamp;
-
-import java.math.BigDecimal;
-import java.time.Instant;
-import java.util.UUID;
 
 @Entity
 @Data
@@ -35,4 +40,7 @@ public class Transaction {
     @CreationTimestamp
     @Column(nullable = false,updatable = false)
     private Instant createdAt;
+
+    @Column(updatable = false, length = 64)
+    private String idempotencyKey;
 }

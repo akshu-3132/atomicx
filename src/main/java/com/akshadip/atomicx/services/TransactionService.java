@@ -1,5 +1,13 @@
 package com.akshadip.atomicx.services;
 
+import java.math.BigDecimal;
+import java.util.Optional;
+import java.util.UUID;
+
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
 import com.akshadip.atomicx.dto.TransactionRequestDto;
 import com.akshadip.atomicx.dto.TransactionResponseDto;
 import com.akshadip.atomicx.exceptions.InsufficientFundsException;
@@ -12,16 +20,6 @@ import com.akshadip.atomicx.repositories.AccountRepository;
 import com.akshadip.atomicx.repositories.LedgerEntryRepository;
 import com.akshadip.atomicx.repositories.TransactionRepository;
 import com.fasterxml.uuid.impl.TimeBasedEpochGenerator;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-
-import javax.swing.text.html.Option;
-import java.math.BigDecimal;
-import java.sql.Time;
-import java.time.Instant;
-import java.util.Optional;
-import java.util.UUID;
 
 @Service
 public class TransactionService {
@@ -50,8 +48,22 @@ public class TransactionService {
     }
 
     @Transactional(timeout = 10)
-    public TransactionResponseDto transfer(TransactionRequestDto transactionRequestDto){
+    public TransactionResponseDto transfer(TransactionRequestDto transactionRequestDto, String idempotencyKey){
+        // Idempotency check - return existing transaction if duplicate key provided
+        if (idempotencyKey != null && !idempotencyKey.isBlank()) {
+            Optional<Transaction> existing = transactionRepository.findByIdempotencyKey(idempotencyKey);
+            if (existing.isPresent()) {
+                return transactionMapper.toResponse(existing.get());
+            }
+        }
+
         Transaction transaction = transactionMapper.toEntity(transactionRequestDto);
+        
+        // Set idempotency key if provided
+        if (idempotencyKey != null && !idempotencyKey.isBlank()) {
+            transaction.setIdempotencyKey(idempotencyKey);
+        }
+        
         UUID senderId = transaction.getSender();
         UUID receiverId = transaction.getReceiver();
         UUID firstId = senderId.compareTo(receiverId) < 0 ? senderId : receiverId;
