@@ -1,14 +1,13 @@
 package com.akshadip.atomicx.controllers;
 
 import java.math.BigDecimal;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.List;
 
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestHeader;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
 
 import com.akshadip.atomicx.dto.TransactionRequestDto;
 import com.akshadip.atomicx.dto.TransactionResponseDto;
@@ -32,4 +31,22 @@ public class TransactionController {
     BigDecimal balance(@PathVariable String userName){
         return transactionService.balance(userName);
     }
+
+/**
+ * Retrieves a list of transactions for a user within a specified date range.
+ * @param userName the username of the user
+ * @param start the start date of the range
+ * @param end the end date of the range
+ * @return a ResponseEntity containing the list of transactions
+ */
+    @GetMapping("/history/filter")
+    public ResponseEntity<List<TransactionResponseDto>> getTransactionsByDateRange(
+            @RequestParam("UserName") String userName,
+            @RequestParam("start") LocalDate start,
+            @RequestParam("end") LocalDate end) {
+        List<TransactionResponseDto> transactions = transactionService.getAllTransactionBetween(start, end,userName);
+        return ResponseEntity.ok(transactions);
+    }
+
+
 }

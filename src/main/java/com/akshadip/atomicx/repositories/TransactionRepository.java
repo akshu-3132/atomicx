@@ -1,5 +1,7 @@
 package com.akshadip.atomicx.repositories;
 
+import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -15,4 +17,8 @@ public interface TransactionRepository extends JpaRepository<Transaction, UUID> 
     boolean userExists(UUID accountId);
 
     Optional<Transaction> findByIdempotencyKey(String idempotencyKey);
+
+    @Query("SELECt t from Transaction t where t.sender = ?1 or t.receiver = ?1 and t.createdAt between ?2 and ?3")
+    Optional<List<Transaction>> findAllByUserNameAndDateRange(UUID accountId, Instant start, Instant end);
+
 }
