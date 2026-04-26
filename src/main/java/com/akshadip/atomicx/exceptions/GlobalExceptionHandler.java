@@ -29,4 +29,13 @@ public class GlobalExceptionHandler {
         body.put("code","USER_DOESNOT_EXIST");
         return new ResponseEntity<>(body,HttpStatus.NOT_FOUND);
     }
+
+    @ExceptionHandler(TransferLimitExceededException.class)
+    public ResponseEntity<Object> handleTransferLimitExceeded(TransferLimitExceededException ex){
+        Map<String,Object> body = new LinkedHashMap<>();
+        body.put("timestamp", Instant.now());
+        body.put("message", ex.getMessage());
+        body.put("code", "TRANSFER_LIMIT_EXCEEDED");
+        return new ResponseEntity<>(body, HttpStatus.BAD_REQUEST);
+    }
 }

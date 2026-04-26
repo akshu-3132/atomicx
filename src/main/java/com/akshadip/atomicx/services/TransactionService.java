@@ -17,6 +17,7 @@ import com.akshadip.atomicx.dto.TransactionRequestDto;
 import com.akshadip.atomicx.dto.TransactionResponseDto;
 import com.akshadip.atomicx.exceptions.InsufficientFundsException;
 import com.akshadip.atomicx.exceptions.UserDoesnotExist;
+import com.akshadip.atomicx.exceptions.TransferLimitExceededException;
 import com.akshadip.atomicx.mappers.TransactionMapper;
 import com.akshadip.atomicx.models.Account;
 import com.akshadip.atomicx.models.Transaction;
@@ -30,6 +31,7 @@ import com.fasterxml.uuid.impl.TimeBasedEpochGenerator;
 public class TransactionService {
 
     private final UUID systemUuid;
+    private final BigDecimal maxTransferLimit;
     private final TransactionRepository transactionRepository;
     private final TransactionMapper transactionMapper;
     private final AccountRepository accountRepository;
@@ -37,6 +39,7 @@ public class TransactionService {
     private final LedgerService ledgerService;
     private final LedgerEntryRepository ledgerEntryRepository;
     TransactionService( @Value("${app.system.id}") String systemId,
+            @Value("${max.transfer.limit}") BigDecimal maxTransferLimit,
             TransactionRepository transactionRepository,
                        TransactionMapper transactionMapper,
                        AccountRepository accountRepository,
@@ -50,6 +53,7 @@ public class TransactionService {
         this.ledgerService = ledgerService;
         this.ledgerEntryRepository = ledgerEntryRepository;
         this.systemUuid = UUID.fromString(systemId);
+        this.maxTransferLimit = maxTransferLimit;
     }
 
     /**
@@ -76,6 +80,14 @@ public TransactionResponseDto transfer(TransactionRequestDto transactionRequestD
 
     // Convert request DTO to transaction entity
     Transaction transaction = transactionMapper.toEntity(transactionRequestDto);
+
+    // Fail-fast: Check transfer limit BEFORE acquiring locks
+    if (transaction.getAmount().compareTo(maxTransferLimit) > 0) {
+        throw new TransferLimitExceededException(
+            "Transfer amount " + transaction.getAmount() + 
+            " exceeds maximum transfer limit of " + maxTransferLimit
+        );
+    }
 
     // Set idempotency key if provided
     if (idempotencyKey != null && !idempotencyKey.isBlank()) {
