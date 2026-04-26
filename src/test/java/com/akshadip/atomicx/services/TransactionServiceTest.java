@@ -4,6 +4,7 @@ import com.akshadip.atomicx.dto.TransactionRequestDto;
 import com.akshadip.atomicx.dto.TransactionResponseDto;
 import com.akshadip.atomicx.exceptions.InsufficientFundsException;
 import com.akshadip.atomicx.exceptions.UserDoesnotExist;
+import com.akshadip.atomicx.exceptions.TransferLimitExceededException;
 import com.akshadip.atomicx.mappers.TransactionMapper;
 import com.akshadip.atomicx.models.Account;
 import com.akshadip.atomicx.models.LedgerEntry;
@@ -103,6 +104,7 @@ class TransactionServiceTest {
         // This avoids issues with @Value annotation resolution
         transactionService = new TransactionService(
             systemUuid.toString(),
+            new BigDecimal("10000.0000"),  // maxTransferLimit
             transactionRepository,
             transactionMapper,
             accountRepository,
@@ -581,8 +583,8 @@ class TransactionServiceTest {
         @Test
         @DisplayName("Should handle large amounts without overflow")
         void testLargeAmountHandling() {
-            // Arrange: Multi-million transaction
-            BigDecimal largeAmount = new BigDecimal("999999.9999");
+            // Arrange: Large amount but within transfer limit
+            BigDecimal largeAmount = new BigDecimal("9999.9999");
             requestDto.setAmount(largeAmount);
 
             when(transactionRepository.findByIdempotencyKey(null))
@@ -594,7 +596,7 @@ class TransactionServiceTest {
             when(accountRepository.findByAccountIdWithLock(receiverId))
                 .thenReturn(Optional.of(receiverAccount));
             when(ledgerEntryRepository.getBalance(senderId))
-                .thenReturn(new BigDecimal("9999999.9999"));
+                .thenReturn(new BigDecimal("50000.0000"));
             when(transactionRepository.save(any(Transaction.class)))
                 .thenReturn(mockTransaction.setAmount(largeAmount));
             when(ledgerService.executeTransaction(any(Transaction.class)))
@@ -798,6 +800,90 @@ class TransactionServiceTest {
     // ============================================================================
     // BALANCE AND RETRIEVAL TESTS
     // ============================================================================
+
+    @Nested
+    @DisplayName("Transfer Limit Tests")
+    class TransferLimitTests {
+
+        @Test
+        @DisplayName("Should pass transfer when amount equals the maximum transfer limit")
+        void testTransferAtExactLimit() {
+            // Arrange
+            BigDecimal limitAmount = new BigDecimal("10000.0000");
+            requestDto.setAmount(limitAmount);
+
+            when(transactionRepository.findByIdempotencyKey(null))
+                .thenReturn(Optional.empty());
+            when(transactionMapper.toEntity(requestDto))
+                .thenReturn(mockTransaction.setAmount(limitAmount));
+            when(accountRepository.findByAccountIdWithLock(senderId))
+                .thenReturn(Optional.of(senderAccount));
+            when(accountRepository.findByAccountIdWithLock(receiverId))
+                .thenReturn(Optional.of(receiverAccount));
+            when(ledgerEntryRepository.getBalance(senderId))
+                .thenReturn(new BigDecimal("50000.0000"));
+            when(transactionRepository.save(any(Transaction.class)))
+                .thenReturn(mockTransaction.setAmount(limitAmount));
+            when(ledgerService.executeTransaction(any(Transaction.class)))
+                .thenReturn(responseDto);
+
+            // Act
+            TransactionResponseDto result = transactionService.transfer(requestDto, null);
+
+            // Assert: Transfer should succeed at the limit
+            assertNotNull(result);
+            verify(accountRepository, times(2)).findByAccountIdWithLock(any());
+            verify(ledgerService, times(1)).executeTransaction(any());
+        }
+
+        @Test
+        @DisplayName("Should throw TransferLimitExceededException when amount exceeds maximum transfer limit")
+        void testTransferAboveLimit() {
+            // Arrange
+            BigDecimal exceedingAmount = new BigDecimal("10000.0001");
+            requestDto.setAmount(exceedingAmount);
+
+            when(transactionRepository.findByIdempotencyKey(null))
+                .thenReturn(Optional.empty());
+            when(transactionMapper.toEntity(requestDto))
+                .thenReturn(mockTransaction.setAmount(exceedingAmount));
+
+            // Act & Assert
+            assertThrows(TransferLimitExceededException.class, () ->
+                transactionService.transfer(requestDto, null),
+                "Should throw TransferLimitExceededException when amount exceeds limit"
+            );
+            // Verify that locks were never acquired (fail-fast before lock acquisition)
+            verify(accountRepository, never()).findByAccountIdWithLock(any());
+            verify(ledgerService, never()).executeTransaction(any());
+        }
+
+        @Test
+        @DisplayName("Should never acquire lock when transfer limit exceeded (fail-fast validation)")
+        void testFailFastLockAcquisitionNotCalled() {
+            // Arrange
+            BigDecimal exceedingAmount = new BigDecimal("15000.0000");
+            requestDto.setAmount(exceedingAmount);
+
+            when(transactionRepository.findByIdempotencyKey(null))
+                .thenReturn(Optional.empty());
+            when(transactionMapper.toEntity(requestDto))
+                .thenReturn(mockTransaction.setAmount(exceedingAmount));
+
+            // Act & Assert
+            assertThrows(TransferLimitExceededException.class, () ->
+                transactionService.transfer(requestDto, null),
+                "Should throw TransferLimitExceededException"
+            );
+            // Verify lock was never called (fail-fast check happens before locking)
+            verify(accountRepository, never()).findByAccountIdWithLock(any());
+        }
+    }
+
+    // ============================================================================
+    // BALANCE AND RETRIEVAL TESTS
+    // ============================================================================
+
 
     @Nested
     @DisplayName("Balance and Retrieval Tests")
