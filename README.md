@@ -13,7 +13,6 @@
 4. [Testing Strategy](#testing-strategy)
 5. [API Specification](#api-specification)
 6. [Setup and Deployment](#setup-and-deployment)
-7. [Operational Considerations](#operational-considerations)
 
 ---
 
@@ -66,6 +65,12 @@ Phase 3: ACT
     Persist transaction and execute ledger entries atomically
     └─ Ledger writes committed within same database transaction
 ```
+
+#### Fail-Fast Validation Before Lock Acquisition
+
+atomicx implements an additional optimization layer: business rule validation (such as transfer limit checks) occurs **before** acquiring pessimistic locks. This "fail-fast" pattern prevents threads from unnecessarily entering the critical lock acquisition phase when they would be rejected anyway.
+
+For example, the transfer limit check compares the requested amount against the configured maximum (`max.transfer.limit`) before attempting to acquire account locks. If the limit is exceeded, `TransferLimitExceededException` is thrown immediately, saving the cost of lock acquisition, database queries, and subsequent lock release. This optimization significantly reduces lock contention under high-frequency request patterns where many requests exceed policy limits.
 
 #### Implementation Details
 
@@ -383,7 +388,7 @@ Unit tests validate service logic in isolation, with all dependencies mocked. Th
 
 #### Test Organization
 
-Tests organized by concern into 7 nested categories:
+Tests organized by concern into 8 nested categories:
 
 | Category | Test Count | Purpose |
 |----------|-----------|---------|
@@ -392,9 +397,10 @@ Tests organized by concern into 7 nested categories:
 | **Transactional Integrity Tests** | 3 | Verify ACID semantics |
 | **BigDecimal Precision Tests** | 4 | Ensure financial accuracy (no rounding errors) |
 | **Validation Tests** | 6 | Exception handling and edge cases |
+| **Transfer Limit Tests** | 3 | Verify max transfer limit enforcement and fail-fast behavior |
 | **Balance and Retrieval Tests** | 4 | Query operations (balance lookup, transaction history) |
 | **Internal Transfer Tests** | 3 | System-initiated transfers (bonuses) |
-| **TOTAL** | **27** | Comprehensive coverage |
+| **TOTAL** | **30** | Comprehensive coverage |
 
 #### Key Unit Tests
 
@@ -609,6 +615,7 @@ http://localhost:8080/api/transactions
 | Status | Error | Cause |
 |--------|-------|-------|
 | 400 | `BadRequest` | Malformed JSON or invalid amount |
+| 400 | `TransferLimitExceededException` | Transfer amount exceeds configured max.transfer.limit |
 | 404 | `UserDoesnotExist` | Sender or receiver account not found |
 | 409 | `InsufficientFundsException` | Sender balance < amount |
 | 500 | `TransactionTimedOutException` | Transfer exceeded 10-second timeout |
@@ -923,6 +930,19 @@ Tables created automatically; no manual DDL required.
 
 ### Configuration Tuning
 
+#### Application-Level Configuration
+
+Default `application.properties` includes business rules and limits:
+
+```properties
+# Transaction Limits
+max.transfer.limit=10000.0000                # Maximum single transfer (BigDecimal, 4 decimal precision)
+```
+
+| Configuration Key | Type | Default | Description |
+|-------------------|------|---------|-------------|
+| `max.transfer.limit` | BigDecimal | 10000.0000 | Maximum amount for a single transfer; enforced before lock acquisition (fail-fast) |
+
 #### High-Concurrency Configuration
 
 Default `application.properties` optimized for 500 concurrent users:
@@ -984,164 +1004,6 @@ curl http://localhost:8080/api/transactions/balance/alice
 
 ---
 
-## Operational Considerations
-
-### Monitoring and Observability
-
-#### Logging
-
-Default log level set to WARN (reduce noise):
-
-```properties
-logging.level.root=WARN
-logging.level.org.flywaydb=WARN
-logging.level.org.springframework=WARN
-```
-
-**Enabling Debug Logs** (troubleshooting only):
-
-```bash
-SPRING_PROFILES_ACTIVE=debug java -jar atomicx.jar
-```
-
-#### Metrics Available
-
-Spring Boot Actuator (enabled by default):
-
-```
-http://localhost:8080/actuator/metrics
-```
-
-Key metrics:
-- `http_requests_total`: Total HTTP requests
-- `http_requests_duration`: Request latency (P50, P95, P99)
-- `db_connection_active`: Active database connections
-- `jvm_memory_used`: JVM heap usage
-
-#### Health Checks
-
-```bash
-curl http://localhost:8080/actuator/health
-```
-
-Returns:
-
-```json
-{
-  "status": "UP",
-  "components": {
-    "db": {
-      "status": "UP",
-      "details": {
-        "database": "PostgreSQL",
-        "version": "15.0"
-      }
-    }
-  }
-}
-```
-
-### Troubleshooting Common Issues
-
-#### Issue: `Connection Timeout` Error
-
-**Symptom**: Errors like "Unable to acquire JDBC Connection"
-
-**Cause**: PostgreSQL server unreachable or connection pool exhausted
-
-**Resolution**:
-
-```bash
-# Verify PostgreSQL running
-psql -U postgres -c "SELECT version();"
-
-# Check connection pool metrics
-curl http://localhost:8080/actuator/metrics/hikaricp_connections_active
-
-# Increase pool size if needed
-# Edit application.properties:
-spring.datasource.hikari.maximum-pool-size=100
-```
-
-#### Issue: `Lock Wait Timeout`
-
-**Symptom**: "Canceling statement due to lock timeout"
-
-**Cause**: Two transactions deadlocked or high lock contention
-
-**Resolution**:
-
-1. Verify UUID ordering in transfer method (deterministic lock order)
-2. Monitor active locks:
-   ```sql
-   SELECT * FROM pg_locks WHERE NOT granted;
-   ```
-3. Increase transaction timeout:
-   ```java
-   @Transactional(timeout = 30)  // Increase from 10 to 30 seconds
-   ```
-
-#### Issue: `OutOfMemoryError` in JVM
-
-**Symptom**: Application crashes with heap exhaustion
-
-**Cause**: Memory leak or insufficient heap allocation
-
-**Resolution**:
-
-```bash
-# Increase heap size
-java -Xmx2g -Xms1g -jar atomicx.jar
-
-# Monitor heap usage
-curl http://localhost:8080/actuator/metrics/jvm_memory_used
-```
-
-#### Issue: Transaction Always Rolling Back
-
-**Symptom**: Transfer requests fail with "rollback occurred"
-
-**Cause**: Validation error (insufficient funds, account not found)
-
-**Resolution**:
-
-1. Verify both accounts exist and have sufficient balance
-2. Check error response message for specific reason
-3. Enable DEBUG logging to trace transaction flow:
-   ```bash
-   SPRING_LOGGING_LEVEL_TRANSACTIONSERVICE=DEBUG java -jar atomicx.jar
-   ```
-
-### Performance Optimization Tips
-
-1. **Connection Pool**: Keep minimum-idle close to expected concurrent connections to avoid acquisition latency
-2. **Index Queries**: Verify `idempotency_key` and `account_id` indexes exist:
-   ```sql
-   SELECT * FROM pg_indexes WHERE tablename = 'transaction';
-   ```
-3. **Query Caching**: For read-heavy workloads, consider Redis cache layer for balance queries
-4. **Batch Operations**: If bulk transfers needed, implement batch endpoint with transaction retry logic
-5. **Monitoring**: Set up alerts for:
-   - Transfer P99 latency > 100ms (indicates lock contention)
-   - Failed transfers > 1% (indicates validation issues)
-   - Active connections > 80% of pool (capacity planning)
-
-### Deployment Checklist
-
-- [ ] Java 21 installed and in PATH
-- [ ] PostgreSQL 15+ running and accessible
-- [ ] Database `atomicx` created with proper permissions
-- [ ] `DB_PASSWORD` environment variable set
-- [ ] application.properties configured for prod environment (if non-default)
-- [ ] Firewall allows port 5432 (PostgreSQL) for application server
-- [ ] Firewall allows port 8080 (or configured port) for clients
-- [ ] Health endpoint responding (http://localhost:8080/actuator/health)
-- [ ] At least one test transfer successful
-- [ ] Logs monitored; no FATAL errors
-- [ ] Backup plan for database in place
-- [ ] Monitoring alerts configured for production
-
----
 
 ## Conclusion
 
@@ -1149,7 +1011,7 @@ atomicx demonstrates production-grade engineering principles for financial syste
 
 1. **Consistency First**: Pessimistic locking and ACID transactions guarantee correctness
 2. **Failure Resilience**: Idempotency keys enable safe retries; deterministic lock ordering prevents deadlocks
-3. **Operational Clarity**: Comprehensive testing (27 unit tests) and observability metrics
+3. **Operational Clarity**: Comprehensive testing (30 unit tests including transfer limit validation) and robust error handling
 4. **Technology Alignment**: PostgreSQL selected for consistency, not performance; trade-offs explicitly documented
 
 The system is production-ready for workloads up to 500 concurrent users on a single PostgreSQL instance. For higher scale, implement database sharding (separate atomicx instances per region/tenant group).
