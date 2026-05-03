@@ -22,7 +22,7 @@ public class LedgerService {
     private final TimeBasedEpochGenerator idGen;
     private final LedgerEntryRepository ledgerEntryRepository;
     LedgerService(TransactionMapper transactionMapper,TimeBasedEpochGenerator idGen,LedgerEntryRepository ledgerEntryRepository,
-                  TransactionRepository transactionRepository){
+                  TransactionRepository transactionRepository) {
         this.transactionMapper = transactionMapper;
         this.idGen = idGen;
         this.ledgerEntryRepository = ledgerEntryRepository;

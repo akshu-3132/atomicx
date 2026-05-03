@@ -11,16 +11,29 @@ import org.springframework.web.bind.annotation.*;
 public class AccountController {
     private final AccountService accountService;
 
-    AccountController(AccountService accountService){
+    AccountController(AccountService accountService) {
         this.accountService = accountService;
     }
 
+    /**
+     * Creates a new account based on the provided account details.
+     *
+     * @param accountRequestDto the request object containing account details such as first name, email, and username
+     * @return the response object containing the generated account ID, username, and email of the newly created account
+     */
     @PostMapping("/create")
-    AccountResponseDto createAccount(@RequestBody AccountRequestDto accountRequestDto){
+    public AccountResponseDto createAccount(@RequestBody AccountRequestDto accountRequestDto) {
         return accountService.createAccount(accountRequestDto);
     }
+
+    /**
+     * Retrieves the account information for a given username.
+     *
+     * @param userName the username of the account to retrieve
+     * @return the account associated with the specified username
+     */
     @GetMapping("/{userName}")
-    Account getAccount(@PathVariable String userName){
+    public AccountResponseDto getAccount(@PathVariable String userName) {
         return accountService.getAccount(userName);
     }
 }

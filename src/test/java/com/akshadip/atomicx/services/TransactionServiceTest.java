@@ -112,7 +112,6 @@ class TransactionServiceTest {
             ledgerService,
             ledgerEntryRepository
         );
-
         senderAccount = new Account()
             .setAccountId(senderId)
             .setUserName("alice")

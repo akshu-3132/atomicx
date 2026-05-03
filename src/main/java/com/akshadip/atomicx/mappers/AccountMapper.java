@@ -7,7 +7,9 @@ import org.springframework.stereotype.Component;
 
 @Component
 public class AccountMapper {
-    public AccountResponseDto toResponse(Account account){
+
+    //create function to convert account to AccountDto
+    public AccountResponseDto toDto(Account account){
         return new AccountResponseDto()
                 .setAccountId(account.getAccountId())
                 .setEmail(account.getEmail())
