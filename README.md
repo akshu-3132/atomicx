@@ -1,6 +1,6 @@
 # atomicx: High-Concurrency Financial Ledger Service
 
-**Version**: 0.0.1-SNAPSHOT  
+
 **Java**: 21  
 **Spring Boot**: 4.0.5  
 **Database**: PostgreSQL
@@ -511,42 +511,79 @@ mvn clean test -Dtest=TransactionServiceTest#IdempotencyTests
 mvn clean test -Dtest=TransactionServiceTest jacoco:report
 ```
 
-### Layer 2: Integration Tests (Future Implementation)
+### Layer 2: Integration Tests with Spring Boot + Testcontainers
 
-#### Rationale
+#### Scope
 
-While unit tests validate logic, they cannot detect:
-- Deadlocks in pessimistic lock acquisition
-- Database-specific isolation level issues
-- Race conditions in concurrent lock release
-- Flyway migration regressions
+Integration tests validate the real Spring Boot application context, HTTP controller behavior, and PostgreSQL persistence using an ephemeral Testcontainers database.
 
-#### Proposed Technology: Testcontainers
+#### Framework Stack
 
-Testcontainers launches ephemeral PostgreSQL containers for each test run:
+- **Spring Boot Test**: boots the full application context
+- **@AutoConfigureMockMvc**: exercises REST endpoints without a live server
+- **Testcontainers PostgreSQL**: auto-provisions PostgreSQL 14.2 via `@Container`
+- **@ServiceConnection**: binds the container to Spring Boot datasource automatically
+
+#### Existing Integration Test Coverage
+
+| Class | Focus | Verified behavior |
+|-------|-------|-------------------|
+| `BaseIntegrationTest` | Container setup | Starts `postgres:14.2` and binds it to Spring Boot via `@ServiceConnection` |
+| `UserIntegrationTest` | REST + persistence | `POST /api/accounts/create`, `GET /api/accounts/{userName}`, 404 for missing accounts |
+| `AtomicxApplicationTests` | Smoke test | Spring Boot context loads successfully with Testcontainers |
+
+#### Representative Snippets
 
 ```java
-@SpringBootTest
 @Testcontainers
-class TransactionServiceIntegrationTest {
-    
+public abstract class BaseIntegrationTest {
     @Container
-    static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:15")
-        .withDatabaseName("atomicx_test")
-        .withUsername("test")
-        .withPassword("test");
-    
-    // Real database, real locking, real race conditions detected
+    @ServiceConnection
+    static PostgreSQLContainer<?> postgreSQLContainer =
+            new PostgreSQLContainer<>("postgres:14.2");
 }
 ```
 
-#### Recommended Integration Test Cases
+```java
+@SpringBootTest
+@AutoConfigureMockMvc
+public class UserIntegrationTest extends BaseIntegrationTest {
 
-1. **Deadlock Detection**: Verify that deterministic UUID ordering prevents circular waits
-2. **Isolation Verification**: Ensure serializable isolation prevents phantom reads
-3. **Lock Contention**: Measure latency under high contention (100+ concurrent threads)
-4. **Ledger Invariant**: Verify sum(debits) = sum(credits) across all test transactions
-5. **Idempotency Enforcement**: Confirm unique constraint on idempotency_key prevents duplicates
+    @Autowired
+    private MockMvc mockMvc;
+
+    @Test
+    void shouldCreateAccount() throws Exception {
+        String requestBody = """
+            {
+                "firstName": "test1",
+                "userName": "test1",
+                "email": "test1@test.com"
+            }
+        """;
+        mockMvc.perform(post("/api/accounts/create")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(requestBody))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.userName").value("test1"))
+                .andExpect(jsonPath("$.email").value("test1@test.com"));
+    }
+}
+```
+
+#### Running the Tests
+
+```bash
+# Run unit tests only
+cd D:\Projects\atomicx\atomicx
+mvn clean test -Dtest=TransactionServiceTest
+
+# Run integration tests only (Testcontainers auto-provisions PostgreSQL 14.2)
+mvn clean test -Dtest=UserIntegrationTest,AtomicxApplicationTests
+
+# Run full test suite
+mvn clean test
+```
 
 ---
 
@@ -865,66 +902,17 @@ Application starts on `http://localhost:8080`
 java -jar target/atomicx-0.0.1-SNAPSHOT.jar
 ```
 
-#### Option 3: Docker (Recommended for Production)
+ 
 
-**Build Docker Image**
 
-```dockerfile
-FROM eclipse-temurin:21-jdk-jammy
-WORKDIR /app
-COPY target/atomicx-0.0.1-SNAPSHOT.jar atomicx.jar
-EXPOSE 8080
-ENTRYPOINT ["java", "-jar", "atomicx.jar"]
-```
-
-Build:
-
-```bash
-docker build -t atomicx:latest .
-```
-
-**Docker Compose (Complete Stack)**
-
-```yaml
-version: '3.9'
-services:
-  postgres:
-    image: postgres:15
-    environment:
-      POSTGRES_DB: atomicx
-      POSTGRES_PASSWORD: postgres
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-
-  atomicx:
-    image: atomicx:latest
-    depends_on:
-      - postgres
-    environment:
-      DB_PASSWORD: postgres
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/atomicx
-    ports:
-      - "8080:8080"
-
-volumes:
-  postgres_data:
-```
-
-Deploy:
-
-```bash
-docker-compose up -d
-```
 
 ### Database Schema
 
 Flyway manages schema migrations automatically on startup. Migration files:
 
 - `src/main/resources/db/migration/V1__Initial_Schema.sql`: Core tables (Account, Transaction, LedgerEntry)
-- `src/main/resources/db/migration/V2__ADD_LEDGER_INDEXES.sql`: Performance indexes
-- `src/main/resources/db/migration/V3__ADD_IDEMPOTENCY_KEY.sql`: Idempotency support
+- `src/main/resources/db/migration/V1__INITIAL_SCHEMA.sql`: Performance indexes
+- `src/main/resources/db/migration/V2__ADD_INDEXES.sql`: Idempotency support
 
 Tables created automatically; no manual DDL required.
 
@@ -1018,7 +1006,7 @@ The system is production-ready for workloads up to 500 concurrent users on a sin
 
 ---
 
-**Documentation Version**: 1.0  
-**Last Updated**: April 25, 2026  
+**Documentation Version**: 1.1  
+**Last Updated**: May 03,2026 
 **Maintainer**: Akshadip 
 

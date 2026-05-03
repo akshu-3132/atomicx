@@ -1,3 +1,7 @@
+
+-- Create unique index on idempotency_key to enforce uniqueness and speed up lookups
+CREATE UNIQUE INDEX idx_transaction_idempotency_key ON transaction(idempotency_key) WHERE idempotency_key IS NOT NULL;
+
 -- 1. Optimize for fetching all entries for a specific transaction (Foreign Key lookup)
 CREATE INDEX idx_ledger_transaction_id ON ledger_entry(transaction_id);
 
