@@ -20,6 +20,7 @@ public class TransactionController {
     TransactionController(TransactionService transactionService){
         this.transactionService = transactionService;
     }
+
     @PostMapping("/transfer")
     TransactionResponseDto transfer(
             @RequestBody TransactionRequestDto transactionRequestDto,
