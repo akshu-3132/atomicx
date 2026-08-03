@@ -11,8 +11,9 @@
 2. [Core Technical Pillars](#core-technical-pillars)
 3. [Architecture and Design Trade-offs](#architecture-and-design-trade-offs)
 4. [Testing Strategy](#testing-strategy)
-5. [API Specification](#api-specification)
-6. [Setup and Deployment](#setup-and-deployment)
+5. [Load Testing Results](#load-testing-results)
+6. [API Specification](#api-specification)
+7. [Setup and Deployment](#setup-and-deployment)
 
 ---
 
@@ -268,38 +269,18 @@ Both entries created or both rolled back; never partial.
 
 **Business Decision**: atomicx demands correctness over scale at a single point. Horizontal scaling achieved through sharding at application level (separate ledger instances per region/tenant), not database level.
 
-### Latency vs. Strict Consistency
+### Consistency vs. Throughput
 
 #### Design Trade-off
 
-atomicx intentionally prioritizes **consistency over latency**. Typical transfer times:
+atomicx intentionally prioritizes **consistency and predictable throughput** over raw latency. The load-test results below show the system sustaining a steady request rate while preserving correctness under concurrent HTTP traffic.
 
-| Operation | Latency | Reason |
-|-----------|---------|--------|
-| Lock acquisition | 1-5ms | Network I/O to database |
-| Balance check | 1-3ms | Ledger aggregation query |
-| Transaction save | 1-2ms | Single INSERT + fsync |
-| Ledger writes | 1-2ms | Two INSERTs + fsync |
-| **Total P50 latency** | 5-17ms | Sequential pessimistic flow |
+#### Throughput Optimization Techniques Employed
 
-For reference:
-- **Optimistic locking**: P50 latency 2-5ms under no contention, _but_ P99 latency 500ms+ under contention due to retries
-- **NoSQL eventual consistency**: P50 latency <1ms, _but_ balance queries may lag by 100ms-5sec
-
-#### Latency Optimization Techniques Employed
-
-1. **Connection Pooling**: Hikari with 50 max connections reduces network setup overhead
-2. **Lock Ordering**: O(1) UUID comparison eliminates deadlocks (avoids retry storms)
-3. **Indexed Lookups**: `idempotency_key` and `account_id` indexes ensure O(log N) queries
-4. **Transaction Timeout**: 10-second hard deadline prevents zombie transactions
-
-#### When Stricter Latency is Required
-
-For use cases requiring sub-2ms transfer times:
-- Consider read replicas for balance queries (accept 100ms staleness)
-- Implement write-through cache for frequently-accessed accounts
-- Use connection pooling with prepared statements (compile-once, execute-many)
-- Shard by account ID to distribute load across multiple PostgreSQL instances
+1. **Connection Pooling**: Hikari reduces connection setup overhead under load
+2. **Lock Ordering**: Deterministic UUID ordering prevents deadlocks
+3. **Indexed Lookups**: `idempotency_key` and `account_id` indexes keep lookups efficient
+4. **Transaction Timeout**: A 10-second deadline prevents long-running transactions from lingering
 
 ### Immutable Ledger Model vs. Mutable Balance Table
 
@@ -584,6 +565,28 @@ mvn clean test -Dtest=UserIntegrationTest,AtomicxApplicationTests
 # Run full test suite
 mvn clean test
 ```
+
+---
+
+## Load Testing Results
+
+The following charts capture the HTTP load test run and the aggregate metrics reported by the test tooling.
+
+### HTTP Performance Overview
+
+![HTTP Performance Overview](images/HTTP_Performance_Overview.png)
+
+### HTTP Request Metrics
+
+![HTTP Request Metrics](images/Http_Request_Metrics.png)
+
+### HTTP Overall Aggregate Metrics
+
+![HTTP Overall Aggregate Metrics](images/HTTP_overall_aggregate_metrics.png)
+
+### HTTP Overall Aggregate Metrics 2
+
+![HTTP Overall Aggregate Metrics 2](images/HTTP_overall_aggregate_metrics_2.png)
 
 ---
 
@@ -1006,7 +1009,5 @@ The system is production-ready for workloads up to 500 concurrent users on a sin
 
 ---
 
-**Documentation Version**: 1.1  
-**Last Updated**: May 03,2026 
-**Maintainer**: Akshadip 
 
+**Maintainer**: Akshadip 
