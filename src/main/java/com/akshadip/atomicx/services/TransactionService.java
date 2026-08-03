@@ -116,6 +116,7 @@ public class TransactionService {
 
         // Execute ledger entries for the transaction
         return ledgerService.executeTransaction(transaction);
+
     }
 
     @Transactional(timeout = 10)
@@ -126,7 +127,7 @@ public class TransactionService {
                 .setSender(this.systemUuid)
                 .setReceiver(accountId)
                 .setStatus(TransactionStatus.COMPLETED)
-                .setAmount(BigDecimal.valueOf(100))
+                .setAmount(BigDecimal.valueOf(100000))
                 .setTransactionId(idGen.generate());
         transactionRepository.save(transaction);
         ledgerService.executeTransaction(transaction);

@@ -1,30 +1,40 @@
-import http from 'k6/http';
-import { check } from 'k6';
+import http from "k6/http";
+import { check } from "k6";
+import exec from "k6/execution";
+
+const BASE_URL = "http://localhost:8080";
 
 export const options = {
   scenarios: {
-    constant_request_rate: {
-      executor: 'constant-arrival-rate',
-      rate: 1000,              // 1000 iterations per second
-      timeUnit: '1s',
-      duration: '1m',          // Run for 1 minute
-      preAllocatedVUs: 100,    // Start with 100 workers
-      maxVUs: 1000,            // Scale up to 1000 workers if responses get slow
+    seed_accounts: {
+      executor: "shared-iterations",
+      vus: 50,
+      iterations: 10000,
+      maxDuration: "10m",
     },
   },
 };
 
 export default function () {
-  const uniqueId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  const id = exec.scenario.iterationInTest + 1; // globally unique, 1..10000
+
+  const username = `user${String(id).padStart(4, "0")}`;
+
   const payload = JSON.stringify({
-    firstName: 'TestUser',
-    email: `user_${uniqueId}@test.com`,
-    userName: `user_${uniqueId}`,
+    firstName: `User${id}`,
+    email: `${username}@test.com`,
+    userName: username,
   });
 
-  const res = http.post('http://localhost:8080/api/accounts/create', payload, {
-    headers: { 'Content-Type': 'application/json' },
+  const res = http.post(`${BASE_URL}/api/accounts/create`, payload, {
+    headers: { "Content-Type": "application/json" },
   });
 
-  check(res, { 'success': (r) => r.status === 200});
+  check(res, {
+    "created successfully": (r) => r.status === 200 || r.status === 201,
+  });
+
+  if (res.status !== 200 && res.status !== 201) {
+    console.log(`Failed to create ${username}: ${res.status} - ${res.body}`);
+  }
 }

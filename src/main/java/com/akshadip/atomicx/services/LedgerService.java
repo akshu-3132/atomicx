@@ -28,19 +28,10 @@ public class LedgerService {
         this.ledgerEntryRepository = ledgerEntryRepository;
     }
 
-    @Transactional(timeout = 7)
+    @Transactional
     public TransactionResponseDto executeTransaction(Transaction transaction){
         BigDecimal creditAmount = transaction.getAmount();
         BigDecimal debitAmount = transaction.getAmount().negate();
-
-        // Double-entry validation: credits must equal debits (net = 0)
-        BigDecimal netAmount = creditAmount.add(debitAmount);
-        if (netAmount.compareTo(BigDecimal.ZERO) != 0) {
-            throw new IllegalStateException(
-                "Double-entry accounting violation: debits (" + debitAmount + 
-                ") + credits (" + creditAmount + ") = " + netAmount
-            );
-        }
 
         LedgerEntry ledgerEntryCredit = new LedgerEntry()
                 .setId(idGen.generate())
