@@ -82,8 +82,8 @@ public class TransactionIntegrationTest extends BaseIntegrationTest {
             } while (receiver.equals(sender));
             String idempotencyKey = String.valueOf(UUID.randomUUID());
             var transactionMap = Map.of(
-                    "senderName", sender,
-                    "receiverName", receiver,
+                    "senderUserName", sender,
+                    "receiverUserName", receiver,
                     "amount", BigDecimal.valueOf(random.nextInt(50) + 1));
             executorService.submit(() -> {
                 try {
