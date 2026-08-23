@@ -35,6 +35,62 @@ atomicx is a robust, production-grade financial ledger service engineered for hi
 
 atomicx prioritizes **correctness over performance**. The system trades higher per-transaction latency for guaranteed data integrity—a fundamental requirement in financial systems where a single inconsistency may compound across thousands of accounts.
 
+### System Architecture
+
+```mermaid
+flowchart TB
+    subgraph Clients["Clients & Load"]
+        direction LR
+        K6["k6 Load Tests"]
+        Swagger["Swagger UI"]
+        MockMvc["MockMvc Tests"]
+    end
+
+    subgraph App["Spring Boot 4 - Java 21"]
+        direction TB
+        AC["AccountController<br/>/api/accounts"]
+        TC["TransactionController<br/>/api/transactions"]
+        AS["AccountService"]
+        TS["TransactionService<br/>@Transactional timeout=10"]
+        LS["LedgerService"]
+        IDGEN["TimeBasedEpochGenerator<br/>UUIDv7"]
+        subgraph Steps["Transfer Pipeline - LOCK-CHECK-ACT"]
+            direction LR
+            S1["1 - Idempotency<br/>UNIQUE key lookup"]
+            S2["2 - Fail-fast<br/>max.transfer.limit"]
+            S3["3 - LOCK<br/>PESSIMISTIC_WRITE<br/>UUID-ordered"]
+            S4["4 - CHECK<br/>SUM ledger >= amount"]
+            S5["5 - ACT<br/>1 Transaction + 2 LedgerEntries"]
+        end
+        TS --> Steps
+    end
+
+    subgraph Data["PostgreSQL + HikariCP"]
+        direction TB
+        ACC_TBL[("account")]
+        TXN_TBL[("transaction<br/>UNIQUE idempotency_key")]
+        LED_TBL[("ledger_entry<br/>append-only")]
+        ACC_TBL --- TXN_TBL
+        TXN_TBL --- LED_TBL
+    end
+
+    K6 & Swagger & MockMvc --> AC & TC
+    AC --> AS
+    TC --> TS
+    AS --> TS
+    TS --> LS
+    TS & LS --> IDGEN
+    AS & TS & LS --> Data
+
+    style Steps fill:#1f2937,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
+    style S3 fill:#7c2d12,stroke:#fb923c,stroke-width:2px,color:#fff7ed
+    style S5 fill:#14532d,stroke:#4ade80,stroke-width:2px,color:#f0fdf4
+    style Data fill:#0c4a6e,stroke:#38bdf8,stroke-width:2px,color:#f0f9ff
+    style App fill:#111827,stroke:#a78bfa,stroke-width:2px,color:#f5f3ff
+```
+
+**Read the transfer path:** `TC -> TS`: idempotency lookup, fail-fast limit check, pessimistic locks in UUID order (deadlock-free), `SUM(ledger)` sufficiency check, then one DB transaction commits `Transaction + DEBIT + CREDIT` together — anything fails, everything rolls back.
+
 ---
 
 ## Core Technical Pillars

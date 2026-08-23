@@ -99,13 +99,13 @@ public class TransactionIntegrationTest extends BaseIntegrationTest {
                     System.err.println("Transaction Failed :  " + e.getMessage());
                 } finally {
                     endLatch.countDown();
-                    executorService.shutdown();
                 }
 
             });
         }
         startLatch.countDown();
         boolean completed = endLatch.await(30, java.util.concurrent.TimeUnit.SECONDS);
+        executorService.shutdown();
         assertTrue(completed, "All transactions should complete within timeout");
         for(String userName : userNames){
             assertTrue(transactionService.balance(userName).compareTo(BigDecimal.ZERO) >= 0);
